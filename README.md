@@ -124,6 +124,26 @@ hidden-reasoning/first-token-timeout behavior flags, and the `-1m`
 long-context variants (a client-side ID convention, derived only when the
 API confirmed the corresponding base model).
 
+### Thinking levels
+
+For models advertising adaptive thinking and effort in
+`additionalModelRequestFieldsSchema`, discovery exposes only the supported
+levels in Pi's `/thinking` selector, including `xhigh` and `max` when available.
+Requests send native `additionalModelRequestFields.thinking` and
+`output_config.effort`, not prompt-based thinking-budget tags. `minimal` maps
+to `low`; `off` is offered only when the model accepts disabled thinking.
+Models without this schema retain the legacy prompt-based behavior.
+
+Use a recent Pi version for the `max` selector (verified with 0.87.1; 0.80.2
+does not expose it). Run `/reload` after updating the extension.
+
+Verified against live Opus 5.5: both `xhigh` and `max` returned HTTP 200 and
+completed responses; an invalid effort returned HTTP 400 with the supported
+effort enumeration. This verifies accepted controls, not relative answer quality.
+
+Regression checks: `npm ci && node --import jiti/register --test test/*.test.ts`
+and `npx tsc --noEmit`.
+
 ## How it differs from pi-kiro
 
 - Authenticates with `KIRO_API_KEY` (sends the `tokentype: API_KEY` header

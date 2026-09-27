@@ -33,6 +33,12 @@ interface ApiModel {
   supportedInputTypes?: string[];
   rateMultiplier?: number;
   tokenLimits?: { maxInputTokens?: number; maxOutputTokens?: number };
+  additionalModelRequestFieldsSchema?: {
+    properties?: {
+      thinking?: { properties?: { type?: { enum?: string[] } } };
+      output_config?: { properties?: { effort?: { enum?: string[] } } };
+    };
+  };
 }
 
 interface ListResponse {
@@ -82,6 +88,22 @@ function toKiroModel(api: ApiModel, baseUrl: string): KiroModel {
   const input: ("text" | "image")[] = types.some((t) => t.toUpperCase() === "IMAGE")
     ? ["text", "image"]
     : ["text"];
+  const fields = api.additionalModelRequestFieldsSchema?.properties;
+  const thinkingTypes = fields?.thinking?.properties?.type?.enum ?? [];
+  const efforts = fields?.output_config?.properties?.effort?.enum ?? [];
+  // Only advertise native effort levels the server explicitly accepts.
+  const thinkingLevelMap: KiroModel["thinkingLevelMap"] =
+    thinkingTypes.includes("adaptive") && efforts.length > 0
+      ? {
+          off: thinkingTypes.includes("disabled") ? "disabled" : null,
+          ...Object.fromEntries(
+            ["minimal", "low", "medium", "high", "xhigh", "max"].map((level) => {
+              const effort = level === "minimal" ? "low" : level;
+              return [level, efforts.includes(effort) ? effort : null];
+            }),
+          ),
+        }
+      : undefined;
 
   return {
     id: piId,
@@ -94,6 +116,7 @@ function toKiroModel(api: ApiModel, baseUrl: string): KiroModel {
     // this, and an unnecessary directive is far cheaper than suppressing
     // reasoning on a model that supports it.
     reasoning: true,
+    ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
     input,
     // Kiro bills in credits via rateMultiplier, not per-token USD. There is
     // no token price to report, so cost stays zero and the multiplier is

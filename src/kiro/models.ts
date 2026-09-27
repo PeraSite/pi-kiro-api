@@ -91,6 +91,7 @@ export interface KiroModel {
   provider: "kiro";
   baseUrl: string;
   reasoning: boolean;
+  thinkingLevelMap?: import("@earendil-works/pi-ai").ThinkingLevelMap;
   input: Input;
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextWindow: number;

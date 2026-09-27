@@ -175,6 +175,10 @@ interface KiroRequest {
     history?: KiroHistoryEntry[];
   };
   agentMode?: string;
+  additionalModelRequestFields?: {
+    thinking: { type: "adaptive" | "disabled" };
+    output_config?: { effort: string };
+  };
 }
 
 interface KiroToolCallState {
@@ -258,7 +262,20 @@ export function streamKiro(
 
       const endpoint = model.baseUrl || "https://q.us-east-1.amazonaws.com/";
       const kiroModelId = resolveKiroModel(model.id);
-      const thinkingEnabled = !!options?.reasoning || model.reasoning;
+      const nativeThinking = model.thinkingLevelMap;
+      const effort = options?.reasoning ? nativeThinking?.[options.reasoning] : undefined;
+      if (nativeThinking && options?.reasoning && !effort) {
+        throw new Error(`Unsupported Kiro thinking level: ${options.reasoning}`);
+      }
+      const thinkingEnabled = nativeThinking
+        ? !!options?.reasoning || nativeThinking.off !== "disabled"
+        : !!options?.reasoning || model.reasoning;
+      const additionalModelRequestFields: KiroRequest["additionalModelRequestFields"] = nativeThinking
+        ? {
+            thinking: { type: thinkingEnabled ? "adaptive" : "disabled" },
+            ...(effort ? { output_config: { effort } } : {}),
+          }
+        : undefined;
       // Kiro models where upstream hides reasoning entirely (no `<thinking>`
       // tags in the text stream, no native reasoning event). We surface a
       // redacted ThinkingContent shim so downstream UIs can show a
@@ -283,9 +300,9 @@ export function streamKiro(
       const ctxTools = split.tools;
       const ctxMessages = split.messages;
       let systemPrompt = split.systemPrompt;
-      // Skip the `<thinking_mode>` directive when the provider hides
-      // reasoning — the directive is a no-op there and costs prompt tokens.
-      if (thinkingEnabled && !reasoningHidden) {
+      // Native adaptive thinking replaces legacy prompt directives.
+      // Hidden-reasoning legacy models ignore those directives as well.
+      if (thinkingEnabled && !reasoningHidden && !nativeThinking) {
         const budget =
           options?.reasoning === "xhigh"
             ? 50000
@@ -440,6 +457,7 @@ export function streamKiro(
             ...(history.length > 0 ? { history } : {}),
           },
           agentMode: "vibe",
+          ...(additionalModelRequestFields ? { additionalModelRequestFields } : {}),
         };
 
         // -- HTTP request with capacity-retry inner loop -----------------
